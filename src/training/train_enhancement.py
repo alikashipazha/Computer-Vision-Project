@@ -63,7 +63,18 @@ def main():
     
     # Initialize model, loss and optimizer
     model = CustomUNet(in_channels=3, out_channels=3).to(device)
-    criterion = CompositeLoss(alpha=0.4, beta=0.4, gamma=0.2).to(device) # FIX: Added .to(device)
+    
+    # NEW: Load previous checkpoint if exists to save Colab GPU Quota
+    checkpoint_path = 'checkpoints/enhancement_best.pth'
+    if os.path.exists(checkpoint_path):
+        model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+        print(f"[Checkpoint] Resuming training from pre-trained weights: {checkpoint_path}")
+        learning_rate = 1e-5  # Use a lower learning rate for fine-tuning
+    else:
+        print("[Checkpoint] No pre-trained weights found. Training from scratch.")
+        learning_rate = 1e-4
+        
+    criterion = CompositeLoss(alpha=0.4, beta=0.4, gamma=0.2).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     
     train_loss_history = []
