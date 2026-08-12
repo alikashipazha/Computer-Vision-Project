@@ -128,11 +128,20 @@ class RealTestDataset(Dataset):
         orig_h, orig_w = raw_photo.shape[:2]
         
         # Extract 4 corners (absolute pixel coordinates) from Roboflow output
-        # In COCO Keypoints format, the structure is [x1, y1, v1, x2, y2, v2, ...]
-        keypoints = ann['keypoints']
-        corners = []
-        for i in range(0, 12, 3):
-            corners.append([keypoints[i], keypoints[i+1]])
+        # Handles both standard Keypoints format and Polygon/Segmentation format gracefully
+        if 'keypoints' in ann:
+            keypoints = ann['keypoints']
+            corners = []
+            for i in range(0, 12, 3):
+                corners.append([keypoints[i], keypoints[i+1]])
+        elif 'segmentation' in ann and len(ann['segmentation']) > 0:
+            seg = ann['segmentation'][0] # Flat list of polygon coordinates [x1, y1, x2, y2, x3, y3, ...]
+            corners = []
+            for i in range(0, 8, 2):
+                corners.append([seg[i], seg[i+1]])
+        else:
+            raise KeyError("Neither 'keypoints' nor 'segmentation' found in annotation data.")
+            
         corners = np.array(corners, dtype=np.float32) # Dimensions (4, 2)
         
         # 1. Resize real test image to standard model dimensions
