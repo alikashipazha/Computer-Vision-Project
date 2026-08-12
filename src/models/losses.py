@@ -20,12 +20,16 @@ class SobelEdgeLoss(nn.Module):
         pred_gray = 0.299 * pred[:, 0:1, :, :] + 0.587 * pred[:, 1:2, :, :] + 0.114 * pred[:, 2:3, :, :]
         target_gray = 0.299 * target[:, 0:1, :, :] + 0.587 * target[:, 1:2, :, :] + 0.114 * target[:, 2:3, :, :]
         
-        # Apply Sobel filters
-        pred_dx = F.conv2d(pred_gray, self.kernel_x, padding=1)
-        pred_dy = F.conv2d(pred_gray, self.kernel_y, padding=1)
+        # Defensive check to ensure filters match input device dynamically
+        device_kernel_x = self.kernel_x.to(pred_gray.device)
+        device_kernel_y = self.kernel_y.to(pred_gray.device)
         
-        target_dx = F.conv2d(target_gray, self.kernel_x, padding=1)
-        target_dy = F.conv2d(target_gray, self.kernel_y, padding=1)
+        # Apply Sobel filters
+        pred_dx = F.conv2d(pred_gray, device_kernel_x, padding=1)
+        pred_dy = F.conv2d(pred_gray, device_kernel_y, padding=1)
+        
+        target_dx = F.conv2d(target_gray, device_kernel_x, padding=1)
+        target_dy = F.conv2d(target_gray, device_kernel_y, padding=1)
         
         # Calculate edge magnitudes
         pred_edge = torch.sqrt(pred_dx**2 + pred_dy**2 + 1e-8)
@@ -59,16 +63,19 @@ class SSIMLoss(nn.Module):
         self.register_buffer('window', window)
 
     def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
-        mu1 = F.conv2d(img1, self.window, padding=self.window_size//2, groups=self.channel)
-        mu2 = F.conv2d(img2, self.window, padding=self.window_size//2, groups=self.channel)
+        # Defensive check to ensure window matches input device dynamically
+        device_window = self.window.to(img1.device)
+        
+        mu1 = F.conv2d(img1, device_window, padding=self.window_size//2, groups=self.channel)
+        mu2 = F.conv2d(img2, device_window, padding=self.window_size//2, groups=self.channel)
 
         mu1_sq = mu1.pow(2)
         mu2_sq = mu2.pow(2)
         mu1_mu2 = mu1 * mu2
 
-        sigma1_sq = F.conv2d(img1 * img1, self.window, padding=self.window_size//2, groups=self.channel) - mu1_sq
-        sigma2_sq = F.conv2d(img2 * img2, self.window, padding=self.window_size//2, groups=self.channel) - mu2_sq
-        sigma12 = F.conv2d(img1 * img2, self.window, padding=self.window_size//2, groups=self.channel) - mu1_mu2
+        sigma1_sq = F.conv2d(img1 * img1, device_window, padding=self.window_size//2, groups=self.channel) - mu1_sq
+        sigma2_sq = F.conv2d(img2 * img2, device_window, padding=self.window_size//2, groups=self.channel) - mu2_sq
+        sigma12 = F.conv2d(img1 * img2, device_window, padding=self.window_size//2, groups=self.channel) - mu1_mu2
 
         c1 = 0.01 ** 2
         c2 = 0.03 ** 2
@@ -84,7 +91,7 @@ class SSIMLoss(nn.Module):
 class CompositeLoss(nn.Module):
     """
     Combined Loss Function: Alpha * L1_Loss + Beta * SSIM_Loss + Gamma * Sobel_Edge_Loss
-    Balances structural structural integrity, pixel-level color, and edge contrast.
+    Balances structural integrity, pixel-level color, and edge contrast.
     """
     def __init__(self, alpha: float = 0.4, beta: float = 0.4, gamma: float = 0.2):
         super(CompositeLoss, self).__init__()
