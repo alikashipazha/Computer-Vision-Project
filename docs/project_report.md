@@ -186,6 +186,5 @@ The generated qualitative triplets demonstrate clean background whitening, sharp
 
 ![Real Photo Qualitative Triplet](../docs/real_test_results/triplet_00.jpg)
 *Figure 5: Qualitative triplet comparison showing (Left) the rectified raw phone input, (Middle) our custom U-Net enhanced output with complete shadow suppression and continuous-tone ink preservation, and (Right) the commercial CamScanner reference.*
-```
 
 ---
