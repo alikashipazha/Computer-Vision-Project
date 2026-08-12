@@ -94,11 +94,11 @@ Because the dataset generator runs **on-the-fly** (compositing random coordinate
   This ensures that the validation and test datasets are fully "frozen" and identical across all epochs, allowing stable, comparable scoring of model performance.
 
 ### 2.5. Data Pipeline Pipeline Verification
-To verify the correct execution of the preprocessing pipeline, splitting logic, and coordinate normalization, the validation utility script (`src/dataset/visualize_check.py`) was executed.
+To verify the correct execution of the preprocessing pipeline, splitting logic, and coordinate normalization, the validation utility script (`tests/visualize_check.py`) was executed.
 
 **Execution Terminal Log Output:**
 ```bash
-(cv-lab) PS E:\ComputerVision\Computer-Vision-Project> python -m src.dataset.visualize_check
+(cv-lab) PS E:\ComputerVision\Computer-Vision-Project> python -m tests.visualize_check
 Data split completed successfully (80/10/10).
 Source Scans Shuffled & Split Summary:
   - Total Scans Located: 50
@@ -118,10 +118,13 @@ Generating test plot...
 Visualization done. Check 'test_preprocessing_alignment.jpg' for correct alignment.
 ```
 
+![test_preprocessing_alignment.jpg](../test_preprocessing_alignment.jpg)
+*Figure 2: test_preprocessing_alignment.jpg*
+
 The resulting verification image plots the four normalized coordinates on top of the synthesized document:
 
 ![Preprocessing Alignment Check](../test_preprocessing_alignment.jpg)
-*Figure 2: Synthesized document raw image with overlaid corner keypoints mapped from normalized target coordinates, demonstrating successful geometric alignment.*
+*Figure 3: Synthesized document raw image with overlaid corner keypoints mapped from normalized target coordinates, demonstrating successful geometric alignment.*
 
 ---
 
@@ -133,7 +136,7 @@ The Document Enhancement Network is built using a custom, 4-level deep Encoder-D
 The model was trained for 40 epochs on Google Colab using an NVIDIA T4 GPU with a batch size of 8 and a learning rate of $1e-4$. The training utilized the custom `CompositeLoss` ($0.4 \times L1 + 0.4 \times SSIM + 0.2 \times SobelEdge$).
 
 ![Enhancement Network Loss Curves](../docs/enhancement_training_loss.png)
-*Figure 3: Training and Validation loss curves over 40 epochs. The validation loss reached its minimum of 0.01965 at Epoch 24, where the optimal weights were successfully saved to prevent overfitting.*
+*Figure 4: Training and Validation loss curves over 40 epochs. The validation loss reached its minimum of 0.01965 at Epoch 24, where the optimal weights were successfully saved to prevent overfitting.*
 
 The terminal output during the final epochs verifies the training convergence and the model selection behavior:
 ```text
@@ -182,7 +185,7 @@ Notably, our custom network outperformed the commercial baseline (CamScanner) by
 The generated qualitative triplets demonstrate clean background whitening, sharp ink preservation, and absolute shadow suppression across the dataset:
 
 ![Real Photo Qualitative Triplet](../docs/real_test_results/triplet_00.jpg)
-*Figure 4: Qualitative triplet comparison showing (Left) the rectified raw phone input, (Middle) our custom U-Net enhanced output with complete shadow suppression and continuous-tone ink preservation, and (Right) the commercial CamScanner reference.*
+*Figure 5: Qualitative triplet comparison showing (Left) the rectified raw phone input, (Middle) our custom U-Net enhanced output with complete shadow suppression and continuous-tone ink preservation, and (Right) the commercial CamScanner reference.*
 ```
 
 ---
