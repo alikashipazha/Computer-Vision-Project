@@ -18,6 +18,7 @@ env/
 checkpoints/*
 !checkpoints/.gitkeep
 data/
+docs/real_test_results/*
 
 # Ignored files in root directory
 /download_background.py
@@ -26,3 +27,11 @@ data/
 /test_raw_photo.jpg
 /test_rectified_input.jpg
 /test_rectified_target.jpg
+
+# Compressed files
+*.zip
+*.rar
+
+# images
+*.png
+*.jpg
