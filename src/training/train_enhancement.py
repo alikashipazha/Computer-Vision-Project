@@ -47,7 +47,7 @@ def main():
     print(f"Using device: {device}")
     
     epochs = 40
-    batch_size = 8
+    batch_size = 4 #8 
     learning_rate = 1e-4
     
     # Load stable datasets split by source scan
@@ -58,8 +58,8 @@ def main():
         epoch_length=800
     )
     
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=2)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=2)
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0)
     
     # Initialize model, loss and optimizer
     model = CustomUNet(in_channels=3, out_channels=3).to(device)
