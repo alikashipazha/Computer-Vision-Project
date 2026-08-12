@@ -5,7 +5,7 @@
 - **Name:** Ali Kashi Pazha
 - **Student ID:** 40121723
 - **GitHub Repository:** [https://github.com/alikashipazha/Computer-Vision-Project](https://github.com/alikashipazha/Computer-Vision-Project)
-- **Google Colab:**
+- **Google Colab:** [https://colab.research.google.com/drive/13TLa1VMpKMHIKJZekUlmHlsiSRP5Rq0h?usp=sharing](https://colab.research.google.com/drive/13TLa1VMpKMHIKJZekUlmHlsiSRP5Rq0h?usp=sharing)
 
 ### Academic Information
 - **University:** K. N. Toosi University of Technology
