@@ -63,7 +63,7 @@ def main():
     
     # Initialize model, loss and optimizer
     model = CustomUNet(in_channels=3, out_channels=3).to(device)
-    criterion = CompositeLoss(alpha=0.4, beta=0.4, gamma=0.2)
+    criterion = CompositeLoss(alpha=0.4, beta=0.4, gamma=0.2).to(device) # FIX: Added .to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     
     train_loss_history = []
