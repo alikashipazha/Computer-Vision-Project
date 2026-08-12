@@ -1,0 +1,28 @@
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+
+# Virtual environment (if any)
+venv/
+.venv/
+env/
+
+# IDE settings
+.vscode/
+.idea/
+
+# Large data and model checkpoints
+checkpoints/*
+!checkpoints/.gitkeep
+data/
+
+# Ignored files in root directory
+/download_background.py
+/setup_project.bat
+/test_generator.py
+/test_raw_photo.jpg
+/test_rectified_input.jpg
+/test_rectified_target.jpg
