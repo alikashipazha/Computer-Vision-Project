@@ -57,6 +57,12 @@ The synthetic training pair generator (`src/dataset/generator.py`) simulates the
 5. **Compositing:** A binary mask of the warped document is used to blend the scan seamlessly into the background canvas, producing the simulated raw smartphone photo.
 6. **Rectification Mapping:** Because the forward transform matrix $H$ is known, the inverse transform $H^{-1}$ can be calculated to warp the simulated raw photo back into a perfectly aligned flat rectangle (Rectified Crop).
 
+### 1.3 Created Files (Architecture & Design)
+- **`src/dataset/generator.py`:**
+  The `SyntheticDatasetGenerator` class is responsible for the physical simulation of perspective and geometric distortions. This class generates a randomized convex quadrilateral within the boundaries of the background canvas to simulate document placement. It then calculates the $3 \times 3$ homography perspective transform matrix $H \in \mathbb{R}^{3 \times 3}$ using OpenCV:
+  $$\mathbf{p}_{\text{target}} = H \mathbf{p}_{\text{source}}$$
+  Applying this matrix to the clean scan via `cv2.warpPerspective` projects the document onto the background. In this phase, the pixel-level photometric degradation function (`degrade_image`) is implemented as a simple passthrough placeholder that returns the warped image without modifications.
+
 ---
 
 ## 2. Phase 2: Preprocessing and Data Pipeline
@@ -126,6 +132,12 @@ The resulting verification image plots the four normalized coordinates on top of
 ![Preprocessing Alignment Check](../test_preprocessing_alignment.jpg)
 *Figure 3: Synthesized document raw image with overlaid corner keypoints mapped from normalized target coordinates, demonstrating successful geometric alignment.*
 
+### 2.6 Created Files (Architecture & Design)
+- **`src/dataset/loader.py`:**
+  Implements the `SyntheticDocumentDataset` class for synthetic data generation and the `RealTestDataset` class for parsing annotated real test photos. Pixels are normalized to $[0.0, 1.0]$ by dividing by 255.0, and standard ImageNet channel-wise mean and standard deviation normalizations are applied to the tensors. To prevent data leakage, source scans are shuffled and split strictly into 80% Train, 10% Val, and 10% Test partitions based on scan identities. Furthermore, to stabilize evaluation curves, the validation and test datasets are deterministically frozen using a pseudo-random seed keyed to the sample index (`idx`).
+- **`tests/visualize_check.py`:**
+  An independent utility script at the root directory that verifies data loader stability and the correctness of the 80/10/10 partition splits. It reverts the Tensor normalization transforms, maps normalized coordinate labels back to absolute pixels, overlays the four corners as colored circles on the background composite, and writes the output as `test_preprocessing_alignment.jpg`.
+
 ---
 
 ## 3. Phase 3: Task 1 - The Document Enhancement Network
@@ -137,19 +149,6 @@ The model was trained for 40 epochs on Google Colab using an NVIDIA T4 GPU with 
 
 ![Enhancement Network Loss Curves](../docs/enhancement_training_loss.png)
 *Figure 4: Training and Validation loss curves over 40 epochs. The validation loss reached its minimum of 0.01965 at Epoch 24, where the optimal weights were successfully saved to prevent overfitting.*
-
-The terminal output during the final epochs verifies the training convergence and the model selection behavior:
-```text
-Epoch [21/40] -> Train Loss: 0.02072 | Val Loss: 0.02045
-Epoch [22/40] -> Train Loss: 0.01926 | Val Loss: 0.02004
-==> New best model saved!
-Epoch [23/40] -> Train Loss: 0.01828 | Val Loss: 0.02016
-Epoch [24/40] -> Train Loss: 0.01774 | Val Loss: 0.01965
-==> New best model saved!
-Epoch [25/40] -> Train Loss: 0.01598 | Val Loss: 0.02035
-...
-Epoch [40/40] -> Train Loss: 0.00847 | Val Loss: 0.02327
-```
 
 ### 3.2. Quantitative Evaluation on Synthetic Splits
 The performance of the trained enhancement model was evaluated using Peak Signal-to-Noise Ratio (PSNR) and Structural Similarity Index (SSIM) across the synthetic splits, compared against a "do-nothing" baseline on the held-out test split:
@@ -187,6 +186,20 @@ The generated qualitative triplets demonstrate clean background whitening, sharp
 ![Real Photo Qualitative Triplet](../docs/real_test_results/triplet_00.jpg)
 *Figure 5: Qualitative triplet comparison showing (Left) the rectified raw phone input, (Middle) our custom U-Net enhanced output with complete shadow suppression and continuous-tone ink preservation, and (Right) the commercial CamScanner reference.*
 
+### 3.4 Created Files (Architecture & Design)
+- **`src/models/enhancement_model.py`:**
+  Defines the custom 4-level deep `CustomUNet` architecture for image enhancement, completely free of dropout layers. It consists of a 5-stage convolutional encoder for feature extraction and a corresponding decoder for spatial resolution restoration. Skip connections between the encoder and decoder blocks propagate high-frequency details (such as thin text strokes) to the reconstruction path. The final output is projected using a `Sigmoid` activation to scale pixels to $[0.0, 1.0]$.
+- **`src/models/losses.py`:**
+  Implements the composite loss function (`CompositeLoss`). This includes a pure PyTorch implementation of the Structural Similarity Index (`SSIMLoss`) using 2D Gaussian filters, avoiding external package dependencies. It also defines the `SobelEdgeLoss` class, which applies fixed horizontal and vertical Sobel convolution kernels over grayscale representations to compute the L1 loss of edge maps, preserving sharp text boundaries.
+- **`src/utils/ocr_helper.py`:**
+  Wraps the PyTesseract library for legibility evaluation. It converts BGR output images to RGB, invokes Tesseract's `image_to_data` method, and calculates the average confidence score of detected words to measure document legibility.
+- **`src/training/train_enhancement.py`:**
+  Manages the deep training loop of the enhancement network, executing data partitioning, batch sampling, backpropagation, optimal model checkpointing, and saving training/validation loss curves under the `docs/` folder.
+- **`src/evaluation/evaluate_enhancement.py`:**
+  Evaluation suite that loads the trained model, calculates synthetic PSNR and SSIM on all splits against a baseline, applies perspective rectification on real smartphone photos, saves side-by-side comparative triplets, and measures OCR readability.
+- **`src/inference/pipeline.py`:**
+  Implements the `EnhancementPipeline` class, which takes a single flat, rectified BGR document crop, applies PyTorch tensor preprocessing, executes the model forward pass, and restores the 8-bit enhanced output scaled back to its original dimensions.
+
 ---
 
 ## 4. Phase 4: Dataset Enhancement with Realistic Degradations
@@ -220,6 +233,99 @@ The updated preprocessing verification utility (`tests/visualize_check.py`) was 
 
 ![Preprocessing Verification Plot](../test_preprocessing_alignment.jpg)
 *Figure 7: Visual verification plot of a generated sample. The corner labels remain correctly mapped, while the document body displays simulated lens blur, additive sensor noise, JPEG compression artifacts, and soft overlapping shadow polygons.*
+
+### 4.4 Modified Files (Code Diffs & Updates)
+- **`src/dataset/generator.py` (Implementation of degradation methods and execution pipeline):**
+  The `degrade_image` function was updated, and the photometric degradation methods were implemented in a sequential chain:
+  ```python
+      def _apply_resolution_loss(self, img: np.ndarray) -> np.ndarray:
+          h, w = img.shape[:2]
+          scale_factor = random.uniform(1.2, 2.2)
+          new_w = max(16, int(w / scale_factor))
+          new_h = max(16, int(h / scale_factor))
+          downscaled = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+          return cv2.resize(downscaled, (w, h), interpolation=cv2.INTER_LINEAR)
+
+      def _apply_brightness_contrast_color(self, img: np.ndarray) -> np.ndarray:
+          img_float = img.astype(np.float32)
+          alpha = random.uniform(0.85, 1.15)
+          beta = random.uniform(-20.0, 20.0)
+          img_adjusted = img_float * alpha + beta
+          img_adjusted[:, :, 0] *= random.uniform(0.92, 1.08) # Blue
+          img_adjusted[:, :, 2] *= random.uniform(0.92, 1.08) # Red
+          return np.clip(img_adjusted, 0, 255).astype(np.uint8)
+
+      def _apply_illumination_and_shadows(self, img: np.ndarray) -> np.ndarray:
+          h, w, c = img.shape
+          img_float = img.astype(np.float32) / 255.0
+          x = np.linspace(0, 1, w, dtype=np.float32)
+          y = np.linspace(0, 1, h, dtype=np.float32)
+          xv, yv = np.meshgrid(x, y)
+          gradient = (xv * random.uniform(-1.0, 1.0) + yv * random.uniform(-1.0, 1.0))
+          min_intensity = random.uniform(0.45, 0.75)
+          gradient = (gradient - gradient.min()) / (gradient.max() - gradient.min())
+          gradient = np.expand_dims(gradient * (1.0 - min_intensity) + min_intensity, axis=2)
+          img_gradient = img_float * gradient
+
+          shadow_mask = np.zeros((h, w), dtype=np.float32)
+          for _ in range(random.randint(1, 3)):
+              pts = np.array([[random.randint(0, w - 1), random.randint(0, h - 1)] for _ in range(random.randint(3, 5))], dtype=np.int32)
+              temp = np.zeros((h, w), dtype=np.float32)
+              cv2.fillPoly(temp, [pts], 1.0)
+              k = random.choice([71, 101, 131, 151])
+              shadow_mask = np.maximum(shadow_mask, cv2.GaussianBlur(temp, (k, k), 0))
+          img_final = img_gradient * np.expand_dims(1.0 - (shadow_mask * random.uniform(0.15, 0.45)), axis=2)
+          return (img_final * 255.0).astype(np.uint8)
+
+      def _apply_blur_and_noise(self, img: np.ndarray) -> np.ndarray:
+          blurred = cv2.GaussianBlur(img, (random.choice([3, 5]), random.choice([3, 5])), random.uniform(0.3, 1.0))
+          noise = np.random.normal(0, random.uniform(2.0, 6.0), img.shape).astype(np.float32)
+          return np.clip(blurred.astype(np.float32) + noise, 0, 255).astype(np.uint8)
+
+      def _apply_jpeg_compression(self, img: np.ndarray) -> np.ndarray:
+          _, encoded = cv2.imencode('.jpg', img, [int(cv2.IMWRITE_JPEG_QUALITY), random.randint(50, 85)])
+          return cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+
+      def degrade_image(self, warped_img: np.ndarray) -> np.ndarray:
+          img = self._apply_resolution_loss(warped_img)
+          img = self._apply_brightness_contrast_color(img)
+          img = self._apply_illumination_and_shadows(img)
+          img = self._apply_blur_and_noise(img)
+          return self._apply_jpeg_compression(img)
+  ```
+
+- **`src/dataset/loader.py` (Fixed resizing of raw composited photos):**
+  Added explicit resizing to prevent dimension mismatch crashes inside the DataLoader batch collation step:
+  ```python
+          # Resize the raw_photo to self.target_size so all batch entries have the same resolution
+          resized_raw_photo = cv2.resize(data_pair['raw_photo'], self.target_size)
+          raw_photo_tensor = IMAGE_TRANSFORM(resized_raw_photo)
+  ```
+
+- **`src/training/train_enhancement.py` (Integrated checkpointing and EarlyStopping monitoring):**
+  Implemented state tracking and an `EarlyStopping` class to prevent overfitting and save GPU resources:
+  ```python
+      class EarlyStopping:
+          def __init__(self, patience: int = 5, min_delta: float = 1e-5):
+              self.patience = patience
+              self.min_delta = min_delta
+              self.counter = 0
+              self.best_loss = None
+              self.early_stop = False
+
+          def __call__(self, val_loss: float) -> bool:
+              if self.best_loss is None:
+                  self.best_loss = val_loss
+              elif val_loss > self.best_loss - self.min_delta:
+                  self.counter += 1
+                  print(f"[EarlyStopping] Counter: {self.counter} out of {self.patience}")
+                  if self.counter >= self.patience:
+                      self.early_stop = True
+              else:
+                  self.best_loss = val_loss
+                  self.counter = 0
+              return self.early_stop
+  ```
 
 ---
 
@@ -284,6 +390,57 @@ The automated corner detection pipeline (`src/inference/corner_pipeline.py`) wra
 2. **Predict:** Runs the spatial U-Net to yield 4 predicted heatmaps.
 3. **Map Coordinates:** Extracts the peak coordinate from each channel using 2D Spatial Argmax, and scales the normalized coordinates back to the original image's native resolution.
 4. **Visualize:** Overlays four colored circles with index rankings (1 to 4) directly on the full-resolution raw smartphone photo to verify localized landmarks.
+
+### 5.5 Created Files (Architecture & Design)
+- **`src/models/corner_models.py`:**
+  Defines the `DirectRegressionNet` (Approach A) using a deep 5-block convolutional encoder followed by an 8-output linear regressor head with `Sigmoid` mapping. It also implements the `HeatmapUNet` (Approach B) to map 3-channel input photos to 4 distinct Gaussian probability maps of size $512 \times 512$.
+- **`src/training/train_corner_reg.py` & `src/training/train_corner_heat.py`:**
+  Implements the training loops for both corner detectors with integrated early stopping and robust checkpoint serialization (saving the epoch, model state dictionary, optimizer state dictionary, and validation loss) to enable seamless fine-tuning.
+- **`src/evaluation/evaluate_corners.py`:**
+  Comparative evaluation script. It implements the spatial `extract_coords_from_heatmaps` helper using a 2D spatial argmax search to extract corner coordinates from probability heatmaps, calculating the mean Euclidean L2 pixel error on a $512 \times 512$ canvas alongside success rates under a strict 10-pixel threshold.
+- **`src/inference/corner_pipeline.py`:**
+  Automated corner detection pipeline. It preprocesses raw input photos, invokes the spatial heatmap U-Net model, extracts peak coordinates, scales them back to the photo's native resolution, and overlays colored circles with index rankings directly on the full-resolution raw smartphone photo.
+
+### 5.6 Modified Files (Code Diffs & Updates)
+- **`src/dataset/loader.py` (Sorting vectors, auto-rotating EXIF data, and Gaussian heatmaps):**
+  Added mathematical coordinate sorting to resolve polygon vertex mismatches:
+  ```python
+  def order_points(pts: np.ndarray) -> np.ndarray:
+      rect = np.zeros((4, 2), dtype=np.float32)
+      s = pts.sum(axis=1)
+      rect[0] = pts[np.argmin(s)] # Top-Left (min sum)
+      rect[2] = pts[np.argmax(s)] # Bottom-Right (max sum)
+      diff = np.diff(pts, axis=1).flatten()
+      rect[1] = pts[np.argmin(diff)] # Top-Right (min diff y - x)
+      rect[3] = pts[np.argmax(diff)] # Bottom-Left (max diff y - x)
+      return rect
+  ```
+  Added PIL-based EXIF transpose mapping to fix auto-rotation metadata issues:
+  ```python
+          from PIL import Image, ImageOps
+          img_path = self.real_test_dir / "images" / image_info['file_name']
+          try:
+              pil_img = Image.open(img_path)
+              pil_img = ImageOps.exif_transpose(pil_img) # Corrects smartphone rotation
+              raw_photo = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+          except Exception as e:
+              raise FileNotFoundError(f"Error loading image {img_path}: {e}")
+  ```
+  Added on-the-fly Gaussian heatmap generation for Approach B:
+  ```python
+  def generate_gaussian_heatmaps(corners: np.ndarray, target_size: Tuple[int, int], sigma: float = 8.0) -> torch.Tensor:
+      h, w = target_size
+      heatmaps = []
+      x = np.arange(0, w, 1, dtype=np.float32)
+      y = np.arange(0, h, 1, dtype=np.float32)
+      xv, yv = np.meshgrid(x, y)
+      for pt in corners:
+          cx = pt[0] * w
+          cy = pt[1] * h
+          heatmap = np.exp(-((xv - cx)**2 + (yv - cy)**2) / (2 * sigma**2))
+          heatmaps.append(heatmap)
+      return torch.tensor(np.stack(heatmaps, axis=0), dtype=torch.float32)
+  ```
 
 ---
 
