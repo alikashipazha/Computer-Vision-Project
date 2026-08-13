@@ -22,8 +22,7 @@ class DoubleConv(nn.Module):
 class DirectRegressionNet(nn.Module):
     """
     Approach A: Direct coordinate regression.
-    Deep 5-block convolutional encoder mapping to an 8-output linear regressor.
-    Returns normalized coordinates mapped strictly inside [0, 1] range via Sigmoid.
+    Regularized with 1D Feature Dropout inside the fully connected classifier head.
     """
     def __init__(self, in_channels: int = 3):
         super(DirectRegressionNet, self).__init__()
@@ -57,19 +56,19 @@ class DirectRegressionNet(nn.Module):
             nn.Flatten(),
             nn.Linear(512 * 16 * 16, 256),
             nn.ReLU(inplace=True),
+            nn.Dropout(p=0.5),  # Phase 6: Standard dropout on flattened features
             nn.Linear(256, 8),
-            nn.Sigmoid()  # Outputs live strictly in [0, 1] range
+            nn.Sigmoid()
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         features = self.features(x)
         return self.fc(features)
 
-
 class HeatmapUNet(nn.Module):
     """
     Approach B: Corner heatmap regression.
-    U-Net encoder-decoder structure mapping directly to 4 heatmaps of size 512x512.
+    Regularized with 2D Spatial Dropout at the deepest bottleneck layer.
     """
     def __init__(self, in_channels: int = 3, out_channels: int = 4):
         super(HeatmapUNet, self).__init__()
@@ -79,6 +78,9 @@ class HeatmapUNet(nn.Module):
         self.down1 = nn.Sequential(nn.MaxPool2d(2), DoubleConv(64, 128))
         self.down2 = nn.Sequential(nn.MaxPool2d(2), DoubleConv(128, 256))
         self.down3 = nn.Sequential(nn.MaxPool2d(2), DoubleConv(256, 512))
+        
+        # Phase 6: Spatial Dropout at the bottleneck
+        self.dropout = nn.Dropout2d(p=0.5)
         
         # Decoder (Upsampling path with Skip Connections)
         self.up1 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
@@ -90,7 +92,6 @@ class HeatmapUNet(nn.Module):
         self.up3 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
         self.conv_up3 = DoubleConv(128, 64)
         
-        # Final projection: Map to 4 corner heatmap channels with Sigmoidactivation
         self.outc = nn.Conv2d(64, out_channels, kernel_size=1)
         self.sigmoid = nn.Sigmoid()
 
@@ -100,6 +101,9 @@ class HeatmapUNet(nn.Module):
         x2 = self.down1(x1)
         x3 = self.down2(x2)
         x4 = self.down3(x3)
+        
+        # Apply Spatial Dropout at bottleneck
+        x4 = self.dropout(x4)
         
         # Decoder
         x_up = self.up1(x4)
