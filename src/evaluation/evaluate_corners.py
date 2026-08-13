@@ -85,6 +85,7 @@ def evaluate_model(model, dataset, approach_type, device) -> tuple:
 
 
 def main():
+    print(torch.cuda.is_available())
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     
@@ -92,7 +93,16 @@ def main():
     model_a = DirectRegressionNet(in_channels=3).to(device)
     path_a = 'checkpoints/corner_reg_best.pth'
     if os.path.exists(path_a):
-        model_a.load_state_dict(torch.load(path_a, map_location=device, weights_only=True))
+        # Load state dict (handle dict formats)
+        state_dict = torch.load(path_a, map_location=device, weights_only=False)
+        weights = state_dict['model_state_dict'] if 'model_state_dict' in state_dict else state_dict
+        
+        # FIX: Remap old layer 3 keys to new layer 4 keys to bypass sequential dropout shift
+        if 'fc.3.weight' in weights:
+            weights['fc.4.weight'] = weights.pop('fc.3.weight')
+            weights['fc.4.bias'] = weights.pop('fc.3.bias')
+            
+        model_a.load_state_dict(weights)
         print("Approach A (Direct Regression) model loaded.")
     else:
         print(f"Warning: Checkpoint not found at {path_a}")
