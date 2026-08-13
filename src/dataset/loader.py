@@ -23,6 +23,24 @@ INV_IMAGE_TRANSFORM = transforms.Compose([
     transforms.Normalize(mean=[-0.485, -0.456, -0.406], std=[1., 1., 1.])
 ])
 
+def order_points(pts: np.ndarray) -> np.ndarray:
+    """
+    Orders 4 points in a consistent sequence: [Top-Left, Top-Right, Bottom-Right, Bottom-Left].
+    pts: numpy array of shape (4, 2)
+    """
+    rect = np.zeros((4, 2), dtype=np.float32)
+    
+    # Sum of coordinates: TL has min sum, BR has max sum
+    s = pts.sum(axis=1)
+    rect[0] = pts[np.argmin(s)]
+    rect[2] = pts[np.argmax(s)]
+    
+    # Difference of coordinates: TR has min diff, BL has max diff (y - x)
+    diff = np.diff(pts, axis=1).flatten()
+    rect[1] = pts[np.argmin(diff)]
+    rect[3] = pts[np.argmax(diff)]
+    
+    return rect
 
 def generate_gaussian_heatmaps(corners: np.ndarray, target_size: Tuple[int, int], sigma: float = 8.0) -> torch.Tensor:
     """
@@ -177,6 +195,9 @@ class RealTestDataset(Dataset):
             raise KeyError("Neither 'keypoints' nor 'segmentation' found in annotation data.")
             
         corners = np.array(corners, dtype=np.float32) # Dimensions (4, 2)
+        
+        # NEW: Order points mathematically to prevent perspective rotation bugs
+        corners = order_points(corners)
         
         # 1. Resize raw smartphone photo for corner detection
         resized_photo = cv2.resize(raw_photo, self.target_size)
