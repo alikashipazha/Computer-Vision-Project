@@ -143,11 +143,22 @@ class RealTestDataset(Dataset):
         image_id = ann['image_id']
         image_info = self.images_info[image_id]
         
+        # img_path = self.real_test_dir / "images" / image_info['file_name']
+        # raw_photo = cv2.imread(str(img_path))
+        # if raw_photo is None:
+        #     raise FileNotFoundError(f"Image file not found: {img_path}")
+        
+        # Read the real smartphone image and auto-correct EXIF orientation
+        from PIL import Image, ImageOps
+        
         img_path = self.real_test_dir / "images" / image_info['file_name']
-        raw_photo = cv2.imread(str(img_path))
-        if raw_photo is None:
-            raise FileNotFoundError(f"Image file not found: {img_path}")
-            
+        try:
+            pil_img = Image.open(img_path)
+            pil_img = ImageOps.exif_transpose(pil_img) # Corrects smartphone rotation
+            raw_photo = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+        except Exception as e:
+            raise FileNotFoundError(f"Error loading image {img_path}: {e}")
+
         orig_h, orig_w = raw_photo.shape[:2]
         
         # Parse absolute corner coordinates [x1, y1, v1, x2, y2, v2, ...]
