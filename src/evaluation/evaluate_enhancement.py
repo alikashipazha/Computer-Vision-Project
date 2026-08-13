@@ -99,6 +99,7 @@ def compute_baseline(dataset) -> tuple:
 
 def main():
     os.makedirs('docs/real_test_results', exist_ok=True)
+    print(torch.cuda.is_available())
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Load trained model
