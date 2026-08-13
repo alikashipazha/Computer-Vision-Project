@@ -188,3 +188,38 @@ The generated qualitative triplets demonstrate clean background whitening, sharp
 *Figure 5: Qualitative triplet comparison showing (Left) the rectified raw phone input, (Middle) our custom U-Net enhanced output with complete shadow suppression and continuous-tone ink preservation, and (Right) the commercial CamScanner reference.*
 
 ---
+
+## 4. Phase 4: Dataset Enhancement with Realistic Degradations
+
+To enable the networks to generalize to real-world physical environments, Phase 4 replaces the placeholder generator with a robust, physically-grounded, 6-step sequential degradation pipeline. This pipeline simulates typical smartphone document photography artifacts (angles, shadows, lens blur, sensor noise, and compression) using only native OpenCV and NumPy operations.
+
+### 4.1. Degradation Pipeline Architecture
+For every training sample, the synthetic generator (`src/dataset/generator.py`) applies six consecutive geometric and photometric transformations to the clean source scan:
+
+![Degradation Pipeline Architecture](../Degradation_Pipeline_Architecture.png)
+*Figure 6: Degradation Pipeline Architecture*
+
+1. **Perspective Warp (Geometric):** Projects the clean scan onto a random textured background using a randomized convex quadrilateral to simulate variable camera angles and distances.
+2. **Resolution Loss (Photometric):** Downscales the image by a random factor between $1.2\times$ and $2.2\times$ and upscales it back using bilinear interpolation, simulating distance and limited sensor resolution.
+3. **Brightness, Contrast, and Color Cast (Photometric):** Applies random linear contrast adjustments ($\alpha \in [0.85, 1.15]$), brightness offsets ($\beta \in [-20, 20]$), and slight channel-wise scaling on the Red and Blue channels to simulate warm/cool lighting.
+4. **Illumination Gradients and Shadows (Photometric):** 
+   - *Illumination Gradient:* Generates a 2D linear gradient map using `np.meshgrid` at a random angle and multiplies it channel-wise.
+   - *Soft Shadows:* Generates random 3-to-5-vertex convex polygons, fills them on a single-channel mask, and applies a heavy Gaussian filter ($71 \times 71$ to $151 \times 151$ kernel) to create soft shadow boundaries before blending.
+5. **Blur and Noise (Photometric):** Applies Gaussian lens blur ($ksize \in \{3, 5\}$) followed by additive, zero-mean Gaussian noise ($\sigma \in [2.0, 6.0]$) to simulate camera shake and high-ISO sensor noise.
+6. **JPEG Compression (Photometric):** Re-encodes the final image to a memory buffer at a random JPEG quality factor between $50$ and $85$, introducing high-frequency compression artifacts.
+
+### 4.2. Geometric vs. Photometric Separation
+To maintain strict, pixel-perfect alignment between the training inputs and target clean scans:
+- **Input-Only Photometric Degradations:** All photometric degradations (steps 2 through 6) are applied strictly to the composited input image and never to the target scan. If any noise, shadows, or color shifts contaminate the target, pixel-wise loss functions (like L1 or MSE) will penalize the model incorrectly.
+- **Inverse Geometric Mapping:** The perspective warp (step 1) is the only geometric transformation. It is mathematically inverted using the calculated inverse homography matrix $H^{-1}$:
+  $$\mathbf{p}_{\text{source}} = H^{-1} \mathbf{p}_{\text{target}}$$
+  This projects the highly degraded smartphone-like document back into a flat, rectified rectangular input, keeping it aligned pixel-for-pixel with the clean target scan.
+
+### 4.3. Pipeline Visual Verification
+The updated preprocessing verification utility (`tests/visualize_check.py`) was executed to confirm that the sequential distortions are applied correctly and that the corner coordinates remain aligned under the new degradation pipeline.
+
+![Preprocessing Verification Plot](../test_preprocessing_alignment.jpg)
+*Figure 7: Visual verification plot of a generated sample. The corner labels remain correctly mapped, while the document body displays simulated lens blur, additive sensor noise, JPEG compression artifacts, and soft overlapping shadow polygons.*
+```
+
+---
