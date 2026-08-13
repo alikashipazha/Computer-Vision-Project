@@ -220,6 +220,69 @@ The updated preprocessing verification utility (`tests/visualize_check.py`) was 
 
 ![Preprocessing Verification Plot](../test_preprocessing_alignment.jpg)
 *Figure 7: Visual verification plot of a generated sample. The corner labels remain correctly mapped, while the document body displays simulated lens blur, additive sensor noise, JPEG compression artifacts, and soft overlapping shadow polygons.*
+
+---
+
+## 5. Phase 5: Task 2 - Document Corner Detection
+
+This mandatory task implements and evaluates two fundamentally different neural architectures for predicting the four page corners of a raw smartphone document photo. To determine the most robust method, both models were trained locally on an NVIDIA GeForce RTX 3050 Laptop GPU and evaluated on synthetic and real test splits.
+
+### 5.1. Architectural Design of the Two Approaches
+- **Approach A — Direct Coordinate Regression:** Implemented as a deep, 5-block convolutional encoder (`DirectRegressionNet`) that progressively downsamples the raw photo. The feature maps are flattened into a 131,072-dimensional vector and fed into a multi-layer perceptron (MLP) head with a final `Sigmoid` activation. It outputs 8 continuous values representing the normalized $(x, y)$ coordinates of the four corners. It was trained using a standard L1 coordinate loss.
+- **Approach B — Heatmap Regression:** Implemented as a fully convolutional, spatial encoder-decoder U-Net (`HeatmapUNet`) outputting 4 distinct probability heatmaps of size $512 \times 512$ (one channel per corner: TL, TR, BR, BL). Target heatmaps are generated on-the-fly using 2D Gaussian distributions centered on the normalized ground-truth coordinates with a standard deviation $\sigma = 8.0$ pixels. The network was trained using a pixel-wise MSE loss. During inference, coordinates are extracted using a robust 2D Spatial Argmax search.
+
+### 5.2. Loss Convergence and Training Logs Analysis
+
+The training behavior of the two approaches reveals a stark contrast in optimization stability:
+
+#### 5.2.1. Approach A Training (Direct Regression Flatline)
+Approach A completely failed to converge. The fully connected layers were unable to establish a stable spatial mapping, causing the training to flatline immediately. Early stopping was triggered at Epoch 6 due to 5 consecutive epochs without validation improvement.
+
+![Approach A Loss Curves](../docs/corner_regression_loss.png)
+*Figure 8: Training and Validation loss curves for Approach A. The validation loss completely flatlined at 0.19859, showing a total optimization block.*
+
+#### 5.2.2. Approach B Training (Exponential Heatmap Decay)
+In contrast, Approach B (Heatmaps) converged rapidly. The network leveraged its spatial convolutional layers to quickly localize the Gaussian corner targets, reaching a near-zero validation loss of `0.00004` by Epoch 11 before early stopping terminated training at Epoch 12.
+
+![Approach B Loss Curves](../docs/corner_heatmap_loss.png)
+*Figure 9: Training and Validation loss curves for Approach B. The model shows an ideal exponential decay, confirming highly stable spatial learning.*
+
+---
+
+### 5.3. Quantitative Performance Comparison
+The performance of both trained models was evaluated against the synthetic test split and the real-world test split:
+
+```text
+(cv-lab) PS E:\ComputerVision\Computer-Vision-Project> python -m src.evaluation.evaluate_corners
+Using device: cuda
+Approach A (Direct Regression) model loaded.
+Approach B (Heatmap Regression) model loaded.
+
+Running comparative evaluations...
 ```
+
+| Metric / Dataset Split | Approach A (Regression) | Approach B (Heatmaps) |
+| :--- | :---: | :---: |
+| **Synthetic Test Error (Mean px)** | 150.15 px | **7.92 px** |
+| **Synthetic Success Rate (<=10px)**| 0.0% | **90.0%** |
+| **Real Test Error (Mean px)**      | 364.56 px | 334.11 px |
+| **Real Success Rate (<=10px)**     | 0.0% | 0.0% |
+
+#### 5.3.1. Analysis of Synthetic Performance (Spatial vs. Global Mappings)
+Approach B (Heatmaps) decisively outperforms Approach A on synthetic data, achieving a minimal mean error of **7.92 pixels** and a **90.0% success rate**.
+- **The Spatial Bottleneck of Approach A:** Flattening the convolutional features into a dense vector destroys structural location information. The network is forced to learn a highly complex, non-linear global-to-point mapping. This results in poor gradients, causing the model to completely stall.
+- **The Translation Equivariance of Approach B:** The fully convolutional spatial U-Net naturally preserves coordinate relationships. The network only needs to learn localized pixel activations around the paper corners, achieving pixel-level tracking.
+
+#### 5.3.2. Analysis of Real-World Generalization Failure (Overfitting & Domain Gap)
+Both approaches failed to generalize to the real-world smartphone test set, yielding high mean errors of **334.11 pixels** (Heatmaps) and **364.56 pixels** (Regression), with a **0.0% success rate**.
+- **Overfitting to Digital Bounding Artifacts:** Per the project constraints, both networks were built "clean" without Dropout layers or pre-trained backbones. Consequently, the networks overfitted entirely to the pixel-perfect, mathematically sharp, and continuous edge boundaries generated by OpenCV's synthetic compositing (`warpPerspective` and masking).
+- **The Synthetic-to-Real Domain Gap:** Real-world photos feature soft, complex physical boundaries, background clutter, and variable reflections. Because the networks memorized the artificial "sharp borders" of synthetic compositions rather than learning the semantic concept of "paper corners", they are blind to real-world pages. When evaluated on real photos, Approach B's output heatmaps remain flat or highly noisy, causing the spatial `argmax` function to return statistically random coordinates, which mathematically averages to $\sim330$ pixels on a $512 \times 512$ canvas.
+
+### 5.4. Corner Detection Pipeline
+The automated corner detection pipeline (`src/inference/corner_pipeline.py`) wraps the superior Heatmap Regression model:
+1. **Preprocess:** Resizes the arbitrary raw BGR image to $512 \times 512$ and normalizes it.
+2. **Predict:** Runs the spatial U-Net to yield 4 predicted heatmaps.
+3. **Map Coordinates:** Extracts the peak coordinate from each channel using 2D Spatial Argmax, and scales the normalized coordinates back to the original image's native resolution.
+4. **Visualize:** Overlays four colored circles with index rankings (1 to 4) directly on the full-resolution raw smartphone photo to verify localized landmarks.
 
 ---
