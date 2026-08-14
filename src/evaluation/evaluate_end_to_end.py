@@ -57,6 +57,25 @@ def main():
         # Pipeline 2: Fully automatic rectification using predicted corners
         # This chained measurement represents the full end-to-end scanner
         enhanced_auto = scanner.scan_document(raw_photo)
+
+        # # Pipeline 1: Rectification using manual annotated corners (Strictly CCW: [TL, BL, BR, TR])
+        # annotated_corners = sample['corners'].numpy() * np.array([raw_photo.shape[1], raw_photo.shape[0]])
+        # ordered_annotated = order_points(annotated_corners)
+        
+        # # Consistent Counter-Clockwise [TL, BL, BR, TR] target coordinates for manual baseline
+        # dst_pts_ccw = np.array([
+        #     [0, 0],
+        #     [0, 511],
+        #     [511, 511],
+        #     [511, 0]
+        # ], dtype=np.float32)
+        
+        # M_manual = cv2.getPerspectiveTransform(ordered_annotated.astype(np.float32), dst_pts_ccw)
+        # rectified_manual = cv2.warpPerspective(raw_photo, M_manual, (512, 512))
+        # enhanced_manual = enhancer_pipeline.process_image(rectified_manual)
+        
+        # # Pipeline 2: Fully automatic rectification using predicted corners (Model Clockwise mapped inside scanner)
+        # enhanced_auto = scanner.scan_document(raw_photo)
         
         # Pipeline 3: Commercial CamScanner Reference
         ref_path = real_ds.real_test_dir / "reference_scans" / file_name
