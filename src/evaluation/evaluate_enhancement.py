@@ -109,8 +109,14 @@ def main():
         print(f"Error: Model checkpoint not found at {checkpoint_path}. Train the model first.")
         return
         
-    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
-    print("Model loaded successfully.")
+    # FIX: Safely load checkpoint with weights_only=True and handle wrapped dictionary structure
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
+    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+        model.load_state_dict(checkpoint['model_state_dict'])
+        print(f"Model loaded successfully from checkpoint (Epoch {checkpoint.get('epoch', 'N/A')}).")
+    else:
+        model.load_state_dict(checkpoint)
+        print("Model loaded successfully from raw state dict.")
     
     # 1. EVALUATE SYNTHETIC DATASETS
     train_ds, val_ds, test_ds = get_train_val_test_datasets(
