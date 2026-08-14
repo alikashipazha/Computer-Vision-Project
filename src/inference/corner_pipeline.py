@@ -15,13 +15,18 @@ class CornerDetectionPipeline:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.target_size = (512, 512)
         
-        # Approach B (Heatmap U-Net) is selected as the default pipeline model
         self.model = HeatmapUNet(in_channels=3, out_channels=4).to(self.device)
         
         if not os.path.exists(model_checkpoint_path):
             raise FileNotFoundError(f"No checkpoint found at: {model_checkpoint_path}")
             
-        self.model.load_state_dict(torch.load(model_checkpoint_path, map_location=self.device, weights_only=True))
+        # FIX: Safely load checkpoint with weights_only=True and handle wrapped dictionary structure
+        checkpoint = torch.load(model_checkpoint_path, map_location=self.device, weights_only=True)
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+            self.model.load_state_dict(checkpoint['model_state_dict'])
+        else:
+            self.model.load_state_dict(checkpoint)
+            
         self.model.eval()
         print("[Pipeline] Corner detection network loaded successfully.")
 
