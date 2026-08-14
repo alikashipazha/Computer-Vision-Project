@@ -113,7 +113,6 @@ def main():
     
     train_loss_history = []
     val_loss_history = []
-    best_val_loss = float('inf')
     actual_epochs = 0
     
     print("Starting training loop...")
