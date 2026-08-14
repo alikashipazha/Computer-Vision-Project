@@ -25,20 +25,21 @@ INV_IMAGE_TRANSFORM = transforms.Compose([
 
 def order_points(pts: np.ndarray) -> np.ndarray:
     """
-    Orders 4 points in a consistent sequence: [Top-Left, Top-Right, Bottom-Right, Bottom-Left].
-    pts: numpy array of shape (4, 2)
+    Orders 4 points in a consistent CCW sequence: [TL, BL, BR, TR]
+    to match the dataset's strict annotation order.
     """
     rect = np.zeros((4, 2), dtype=np.float32)
-    
-    # Sum of coordinates: TL has min sum, BR has max sum
     s = pts.sum(axis=1)
-    rect[0] = pts[np.argmin(s)]
-    rect[2] = pts[np.argmax(s)]
-    
-    # Difference of coordinates: TR has min diff, BL has max diff (y - x)
     diff = np.diff(pts, axis=1).flatten()
-    rect[1] = pts[np.argmin(diff)]
-    rect[3] = pts[np.argmax(diff)]
+    
+    # TL has minimum sum of coordinates
+    rect[0] = pts[np.argmin(s)]
+    # BR has maximum sum of coordinates
+    rect[2] = pts[np.argmax(s)]
+    # BL has maximum difference (y - x is large, so x - y is min)
+    rect[1] = pts[np.argmax(diff)]
+    # TR has minimum difference (y - x is small, so x - y is max)
+    rect[3] = pts[np.argmin(diff)]
     
     return rect
 
@@ -202,7 +203,7 @@ class RealTestDataset(Dataset):
         # 1. Resize raw smartphone photo for corner detection
         resized_photo = cv2.resize(raw_photo, self.target_size)
         
-        # 2. Normalize corner labels to [0, 1] based on original annotated size
+        # 2. Normalize corner labels to [0, 1] based on original labeled image dimensions
         normalized_corners = corners.copy()
         normalized_corners[:, 0] /= orig_w
         normalized_corners[:, 1] /= orig_h
@@ -210,12 +211,15 @@ class RealTestDataset(Dataset):
         # 3. Generate ground truth rectified crop for the evaluation dataset
         pixel_corners = normalized_corners * np.array([orig_w, orig_h], dtype=np.float32)
         
-        src_pts = pixel_corners
+        # FIX: Ensure src_pts is explicitly bound to pixel_corners to resolve NameError
+        src_pts = pixel_corners.astype(np.float32)
+        
+        # Target points mapped in strict Counter-Clockwise [TL, BL, BR, TR] sequence
         dst_pts = np.array([
             [0, 0],
-            [self.target_size[0] - 1, 0],
+            [0, self.target_size[1] - 1],
             [self.target_size[0] - 1, self.target_size[1] - 1],
-            [0, self.target_size[1] - 1]
+            [self.target_size[0] - 1, 0]
         ], dtype=np.float32)
         
         M = cv2.getPerspectiveTransform(src_pts, dst_pts)
