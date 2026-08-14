@@ -37,11 +37,12 @@ class SyntheticDatasetGenerator:
         jitter_range_x = int(bg_w * 0.08)
         jitter_range_y = int(bg_h * 0.08)
         
+        # REVERTED TO STRICT CCW SEQUENCE: [TL, BL, BR, TR]
         points = [
-            [tl[0] + random.randint(-jitter_range_x, jitter_range_x), tl[1] + random.randint(-jitter_range_y, jitter_range_y)],
-            [tr[0] + random.randint(-jitter_range_x, jitter_range_x), tr[1] + random.randint(-jitter_range_y, jitter_range_y)],
-            [br[0] + random.randint(-jitter_range_x, jitter_range_x), br[1] + random.randint(-jitter_range_y, jitter_range_y)],
-            [bl[0] + random.randint(-jitter_range_x, jitter_range_x), bl[1] + random.randint(-jitter_range_y, jitter_range_y)]
+            [tl[0] + random.randint(-jitter_range_x, jitter_range_x), tl[1] + random.randint(-jitter_range_y, jitter_range_y)], # TL
+            [bl[0] + random.randint(-jitter_range_x, jitter_range_x), bl[1] + random.randint(-jitter_range_y, jitter_range_y)], # BL
+            [br[0] + random.randint(-jitter_range_x, jitter_range_x), br[1] + random.randint(-jitter_range_y, jitter_range_y)], # BR
+            [tr[0] + random.randint(-jitter_range_x, jitter_range_x), tr[1] + random.randint(-jitter_range_y, jitter_range_y)]  # TR
         ]
         
         for pt in points:
@@ -212,12 +213,12 @@ class SyntheticDatasetGenerator:
         clean_scan_resized = cv2.resize(clean_scan, self.target_size)
         scan_h, scan_w = clean_scan_resized.shape[:2]
         
-        # 2. Source points (corners of the clean flat scan)
+        # 2. Source points in strict Counter-Clockwise [TL, BL, BR, TR] sequence
         src_pts = np.array([
-            [0, 0],                  # Top-Left
-            [scan_w - 1, 0],         # Top-Right
-            [scan_w - 1, scan_h - 1],# Bottom-Right
-            [0, scan_h - 1]          # Bottom-Left
+            [0, 0],                  # TL
+            [0, scan_h - 1],         # BL
+            [scan_w - 1, scan_h - 1],# BR
+            [scan_w - 1, 0]          # TR
         ], dtype=np.float32)
         
         # 3. Destination points (random quadrilateral on the background)
