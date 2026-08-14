@@ -56,3 +56,28 @@ class EndToEndScannerPipeline:
         # Step 4: Enhance the rectified crop (whiten background, remove shadows/noise)
         final_scan = self.enhancement_pipeline.process_image(rectified_crop)
         return final_scan
+
+    # def scan_document(self, raw_img_bgr: np.ndarray) -> np.ndarray:
+    #     """
+    #     Executes the full automated scanning chain on a raw smartphone photo.
+    #     """
+    #     orig_h, orig_w = raw_img_bgr.shape[:2]
+        
+    #     # Step 1: Predict corner landmarks (strictly ordered [TL, TR, BR, BL] by Phase 5 model)
+    #     predicted_corners = self.corner_pipeline.predict_corners(raw_img_bgr) # Shape (4, 2)
+        
+    #     # Step 2: Directly map Clockwise predictions to Clockwise target (Bypasses order_points)
+    #     src_pts = predicted_corners.astype(np.float32)
+    #     dst_pts = np.array([
+    #         [0, 0],                             # TL
+    #         [self.target_size[0] - 1, 0],        # TR
+    #         [self.target_size[0] - 1, self.target_size[1] - 1], # BR
+    #         [0, self.target_size[1] - 1]         # BL
+    #     ], dtype=np.float32)
+        
+    #     M = cv2.getPerspectiveTransform(src_pts, dst_pts)
+    #     rectified_crop = cv2.warpPerspective(raw_img_bgr, M, self.target_size)
+        
+    #     # Step 3: Enhance the rectified crop
+    #     final_scan = self.enhancement_pipeline.process_image(rectified_crop)
+    #     return final_scan
