@@ -144,6 +144,6 @@ All training scripts feature **Early Stopping** and **Automatic Checkpoint Resum
 
 To deploy the workspace or run isolated pipelines via Docker:
 ```bash
-# Build and run the container serviced
+# Build and run the container service
 docker-compose -f docker/docker-compose.yml up --build
 ```
