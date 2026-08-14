@@ -5,6 +5,7 @@ import torch
 from torch.utils.data import DataLoader
 from src.dataset.loader import get_train_val_test_datasets, RealTestDataset
 from src.models.corner_models import DirectRegressionNet, HeatmapUNet
+import torch.nn as nn
 
 def extract_coords_from_heatmaps(heatmaps: torch.Tensor) -> np.ndarray:
     """
@@ -89,30 +90,64 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     
+    # # 1. Initialize and load Approach A
+    # model_a = DirectRegressionNet(in_channels=3).to(device)
+    # path_a = 'checkpoints/corner_reg_best.pth'
+    # if os.path.exists(path_a):
+    #     # Load state dict (handle dict formats)
+    #     state_dict = torch.load(path_a, map_location=device, weights_only=False)
+    #     weights = state_dict['model_state_dict'] if 'model_state_dict' in state_dict else state_dict
+        
+    #     # FIX: Remap old layer 3 keys to new layer 4 keys to bypass sequential dropout shift
+    #     if 'fc.3.weight' in weights:
+    #         weights['fc.4.weight'] = weights.pop('fc.3.weight')
+    #         weights['fc.4.bias'] = weights.pop('fc.3.bias')
+            
+    #     model_a.load_state_dict(weights)
+    #     print("Approach A (Direct Regression) model loaded.")
+    # else:
+    #     print(f"Warning: Checkpoint not found at {path_a}")
+        
     # 1. Initialize and load Approach A
     model_a = DirectRegressionNet(in_channels=3).to(device)
     path_a = 'checkpoints/corner_reg_best.pth'
     if os.path.exists(path_a):
-        # Load state dict (handle dict formats)
         state_dict = torch.load(path_a, map_location=device, weights_only=False)
         weights = state_dict['model_state_dict'] if 'model_state_dict' in state_dict else state_dict
         
-        # FIX: Remap old layer 3 keys to new layer 4 keys to bypass sequential dropout shift
-        if 'fc.3.weight' in weights:
+        # FIX: Bulletproof type-check for nn.Dropout presence in the model
+        has_dropout_in_model = any(isinstance(layer, nn.Dropout) for layer in model_a.fc)
+        
+        # Bidirectional Key Remapper:
+        if has_dropout_in_model and 'fc.3.weight' in weights:
+            # Model HAS dropout, but checkpoint has NO dropout -> Map 3 to 4
             weights['fc.4.weight'] = weights.pop('fc.3.weight')
             weights['fc.4.bias'] = weights.pop('fc.3.bias')
+            print("[Mapper] Remapped old fc.3 keys to new fc.4 keys (with dropout).")
             
-        model_a.load_state_dict(weights)
+        elif not has_dropout_in_model and 'fc.4.weight' in weights:
+            # Model has NO dropout, but checkpoint HAS dropout -> Map 4 to 3
+            weights['fc.3.weight'] = weights.pop('fc.4.weight')
+            weights['fc.3.bias'] = weights.pop('fc.4.bias')
+            print("[Mapper] Remapped checkpoint fc.4 keys back to fc.3 keys (no dropout).")
+            
+        model_a.load_state_dict(weights, strict=False)
         print("Approach A (Direct Regression) model loaded.")
     else:
         print(f"Warning: Checkpoint not found at {path_a}")
-        
+
     # 2. Initialize and load Approach B
     model_b = HeatmapUNet(in_channels=3, out_channels=4).to(device)
     path_b = 'checkpoints/corner_heat_best.pth'
     if os.path.exists(path_b):
-        model_b.load_state_dict(torch.load(path_b, map_location=device, weights_only=True))
-        print("Approach B (Heatmap Regression) model loaded.")
+        # FIX: Safely load checkpoint with weights_only=True and handle wrapped dictionary structure
+        checkpoint_b = torch.load(path_b, map_location=device, weights_only=True)
+        if isinstance(checkpoint_b, dict) and 'model_state_dict' in checkpoint_b:
+            model_b.load_state_dict(checkpoint_b['model_state_dict'])
+            print(f"Approach B (Heatmap Regression) model loaded from checkpoint (Epoch {checkpoint_b.get('epoch', 'N/A')}).")
+        else:
+            model_b.load_state_dict(checkpoint_b)
+            print("Approach B (Heatmap Regression) model loaded from raw state dict.")
     else:
         print(f"Warning: Checkpoint not found at {path_b}")
 
