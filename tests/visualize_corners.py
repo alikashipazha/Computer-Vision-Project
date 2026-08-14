@@ -17,7 +17,7 @@ def main():
         print(f"Error: No real test photos found in {real_test_dir}")
         return
         
-    sample_photo_path = real_photos[0]
+    sample_photo_path = real_photos[1]
     print(f"Loading raw photo for visualization: {sample_photo_path}")
     
     try:
