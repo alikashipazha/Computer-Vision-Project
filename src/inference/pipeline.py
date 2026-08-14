@@ -16,7 +16,13 @@ class EnhancementPipeline:
         if not os.path.exists(model_checkpoint_path):
             raise FileNotFoundError(f"No checkpoint found at: {model_checkpoint_path}")
             
-        self.model.load_state_dict(torch.load(model_checkpoint_path, map_location=self.device))
+        # FIX: Safely load checkpoint with weights_only=True and handle wrapped dictionary structure
+        checkpoint = torch.load(model_checkpoint_path, map_location=self.device, weights_only=True)
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+            self.model.load_state_dict(checkpoint['model_state_dict'])
+        else:
+            self.model.load_state_dict(checkpoint)
+            
         self.model.eval()
         print("[Pipeline] Enhancement network loaded successfully.")
 
