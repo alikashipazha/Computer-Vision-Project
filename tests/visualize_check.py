@@ -58,7 +58,7 @@ def main():
         drawn_img = draw_corners(raw_photo, sample['corners'].numpy())
         
         # Save output image
-        cv2.imwrite("test_preprocessing_alignment.jpg", drawn_img)
+        cv2.imwrite("docs/test_preprocessing_alignment.jpg", drawn_img)
         print("Visualization done. Check 'test_preprocessing_alignment.jpg' for correct alignment.")
         
     except Exception as e:
